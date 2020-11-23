@@ -89,6 +89,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+bin/
+lib64
+lib/
+pyvenv.cfg
 
 # Spyder project settings
 .spyderproject
@@ -108,3 +112,6 @@ venv.bak/
 /output
 
 _temp.csv
+
+# VS Code specific
+.vscode
