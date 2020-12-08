@@ -167,7 +167,7 @@ parser.add_argument(
     "--projects-file",
     help="json file containing GitHub projects",
     type=str,
-    default="../resources/mypy-dependents-by-stars.json",
+    default="./resources/mypy-dependents-by-stars.json",
 )
 parser.add_argument(
     "--limit",
