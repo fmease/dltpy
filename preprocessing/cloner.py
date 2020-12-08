@@ -21,6 +21,6 @@ class Cloner:
         if os.path.isdir(destination_path):
             shutil.rmtree(destination_path)
 
-        Repo.clone_from(repo_url, destination_path)
+        Repo.clone_from(repo_url, destination_path, multi_options=["--depth=1"])
 
         return destination_path
