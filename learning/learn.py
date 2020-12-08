@@ -10,6 +10,7 @@ from sklearn.metrics import classification_report
 from torch.utils import data
 from torch.utils.data import DataLoader
 from typing import Tuple
+from sys import stderr
 
 import config
 
@@ -390,11 +391,7 @@ if __name__ == "__main__":
 
     top_n_pred = [1, 2, 3]
     models = [load_m4]
-    datasets = [
-        "2_cf_cr_optional",
-        "3_cp_cf_cr_optional",
-        "4_complete_without_return_expressions",
-    ]
+    datasets = ["output"]
     n_repetitions = 3
 
     for dataset in datasets:
@@ -439,9 +436,21 @@ if __name__ == "__main__":
                 y_true, y_pred = evaluate(model, test_loader, top_n=max(top_n_pred))
 
                 # If the prediction is "other" - ignore the result
-                idx_of_other = pickle.load(
+                label_encoder = pickle.load(
                     open(f"./{dataset}/ml_inputs/label_encoder.pkl", "rb")
-                ).transform(["other"])[0]
+                )
+
+                # "other" is not part of training data
+                idx_of_other = -1
+                try:
+                    idx_of_other = label_encoder.transform(["other"])[0]
+                except ValueError:
+                    print(
+                        "note: pseudo type 'other' is not part of the training data",
+                        file=stderr,
+                    )
+                    pass
+
                 idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
 
                 for top_n in top_n_pred:
