@@ -362,7 +362,7 @@ def load_m4():
 
 
 def get_datapoints(dataset: str) -> Tuple[str, str, str, str]:
-    base = f"../input_datasets/{dataset}/vectors/"
+    base = f"./{dataset}/vectors/"
     return (
         base + "return_datapoints_x.npy",
         base + "return_datapoints_y.npy",
