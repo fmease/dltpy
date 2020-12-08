@@ -16,7 +16,9 @@ import config
 
 # LOCAL CONFIG
 TYPES_FILE = os.path.join(config.ML_INPUTS_PATH, "_most_frequent_types.csv")
-CACHE = True
+# CACHE = True
+CACHE = False
+
 
 def list_files(directory: str, full=True) -> list:
     """
@@ -79,10 +81,10 @@ def format_df(df: pd.DataFrame) -> pd.DataFrame:
     :type df: dataframe to use
     :returns: final dataframe
     """
-    df['arg_names'] = df['arg_names'].apply(lambda x: literal_eval(x))
-    df['arg_types'] = df['arg_types'].apply(lambda x: literal_eval(x))
-    df['arg_descrs'] = df['arg_descrs'].apply(lambda x: literal_eval(x))
-    df['return_expr'] = df['return_expr'].apply(lambda x: literal_eval(x))
+    df["arg_names"] = df["arg_names"].apply(lambda x: literal_eval(x))
+    df["arg_types"] = df["arg_types"].apply(lambda x: literal_eval(x))
+    df["arg_descrs"] = df["arg_descrs"].apply(lambda x: literal_eval(x))
+    df["return_expr"] = df["return_expr"].apply(lambda x: literal_eval(x))
 
     return df
 
@@ -94,20 +96,28 @@ def filter_return_datapoints(df: pd.DataFrame) -> pd.DataFrame:
     :return: filtered dataframe
     """
     print(f"Functions before dropping on return type {len(df)}")
-    df = df.dropna(subset=['return_type'])
+    df = df.dropna(subset=["return_type"])
     print(f"Functions after dropping on return type {len(df)}")
 
     print(f"Functions before dropping nan, None, Any return type {len(df)}")
-    to_drop = np.invert((df['return_type'] == 'nan') | (df['return_type'] == 'None') | (df['return_type'] == 'Any'))
+    to_drop = np.invert(
+        (df["return_type"] == "nan")
+        | (df["return_type"] == "None")
+        | (df["return_type"] == "Any")
+    )
     df = df[to_drop]
     print(f"Functions after dropping nan return type {len(df)}")
 
-    print(f"Functions before dropping on empty docstring, function comment and return comment {len(df)}")
-    df = df.dropna(subset=['docstring', 'func_descr', 'return_descr'])
-    print(f"Functions after dropping on empty docstring, function comment and return comment {len(df)}")
+    print(
+        f"Functions before dropping on empty docstring, function comment and return comment {len(df)}"
+    )
+    df = df.dropna(subset=["docstring", "func_descr", "return_descr"])
+    print(
+        f"Functions after dropping on empty docstring, function comment and return comment {len(df)}"
+    )
 
     print(f"Functions before dropping on empty return expression {len(df)}")
-    df = df[df['return_expr'].apply(lambda x: len(literal_eval(x))) > 0]
+    df = df[df["return_expr"].apply(lambda x: len(literal_eval(x))) > 0]
     print(f"Functions after dropping on empty return expression {len(df)}")
 
     return df
@@ -122,23 +132,26 @@ def gen_argument_df(df: pd.DataFrame) -> pd.DataFrame:
     arguments = []
     for i, row in df.iterrows():
         if i % 1000 == 0:
-            print(float(i)/len(df))
-        for p_i, arg_name in enumerate(literal_eval(row['arg_names'])):
-            if arg_name != 'self':
-                arg_type = literal_eval(row['arg_types'])[p_i]
-                if arg_type == '' or arg_type == 'Any' or arg_type == 'None':
+            print(float(i) / len(df))
+        for p_i, arg_name in enumerate(literal_eval(row["arg_names"])):
+            if arg_name != "self":
+                arg_type = literal_eval(row["arg_types"])[p_i]
+                if arg_type == "" or arg_type == "Any" or arg_type == "None":
                     continue
-                arg_descr = literal_eval(row['arg_descrs'])[p_i]
-                if arg_descr == '':
+                arg_descr = literal_eval(row["arg_descrs"])[p_i]
+                if arg_descr == "":
                     continue
 
-                arguments.append([row['name'], arg_name, arg_type, arg_descr])
+                arguments.append([row["name"], arg_name, arg_type, arg_descr])
 
-    return pd.DataFrame(arguments, columns=['func_name', 'arg_name', 'arg_type', 'arg_comment'])
+    return pd.DataFrame(
+        arguments, columns=["func_name", "arg_name", "arg_type", "arg_comment"]
+    )
 
 
-def encode_types(df: pd.DataFrame, df_args: pd.DataFrame, threshold: int = 999) -> Tuple[
-    DataFrame, DataFrame, LabelEncoder]:
+def encode_types(
+    df: pd.DataFrame, df_args: pd.DataFrame, threshold: int = 999
+) -> Tuple[DataFrame, DataFrame, LabelEncoder]:
     """
     Encode the dataframe types to integers.
     :param df: dataframe with function data
@@ -149,8 +162,8 @@ def encode_types(df: pd.DataFrame, df_args: pd.DataFrame, threshold: int = 999) 
     le = preprocessing.LabelEncoder()
 
     # All types
-    return_types = df['return_type'].values
-    arg_types = df_args['arg_type'].values
+    return_types = df["return_type"].values
+    arg_types = df_args["arg_type"].values
     all_types = np.concatenate((return_types, arg_types), axis=0)
 
     unique, counts = np.unique(all_types, return_counts=True)
@@ -161,35 +174,39 @@ def encode_types(df: pd.DataFrame, df_args: pd.DataFrame, threshold: int = 999) 
     common_types_counts = [counts[i] for i in np.argsort(counts)[::-1][:threshold]]
 
     print("Remapping uncommon types for functions")
-    df['return_type_t'] = df['return_type'].apply(lambda x: x if x in common_types else 'other')
+    df["return_type_t"] = df["return_type"].apply(
+        lambda x: x if x in common_types else "other"
+    )
 
     print("Remapping uncommon types for arguments")
-    df_args['arg_type_t'] = df_args['arg_type'].apply(lambda x: x if x in common_types else 'other')
+    df_args["arg_type_t"] = df_args["arg_type"].apply(
+        lambda x: x if x in common_types else "other"
+    )
 
     print("Fitting label encoder on transformed types")
     # All types transformed
-    return_types = df['return_type_t'].values
-    arg_types = df_args['arg_type_t'].values
+    return_types = df["return_type_t"].values
+    arg_types = df_args["arg_type_t"].values
     all_types = np.concatenate((return_types, arg_types), axis=0)
     le.fit(all_types)
 
     print("Store type mapping with counts")
     pd.DataFrame(
         list(zip(le.transform(common_types), common_types, common_types_counts)),
-        columns=['enc', 'type', 'count']
+        columns=["enc", "type", "count"],
     ).to_csv(TYPES_FILE)
 
     # transform all type
     print("Transforming return types")
-    df['return_type_enc'] = le.transform(return_types)
+    df["return_type_enc"] = le.transform(return_types)
 
     print("Transforming args types")
-    df_args['arg_type_enc'] = le.transform(arg_types)
+    df_args["arg_type_enc"] = le.transform(arg_types)
 
     return df, df_args, le
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if not os.path.exists(config.ML_INPUTS_PATH):
         os.makedirs(config.ML_INPUTS_PATH)
 
@@ -222,17 +239,32 @@ if __name__ == '__main__':
     df, df_params, label_encoder = encode_types(df, df_params)
 
     print("Storing label encoder")
-    with open(config.LABEL_ENCODER_PATH, 'wb') as file:
+    with open(config.LABEL_ENCODER_PATH, "wb") as file:
         pickle.dump(label_encoder, file)
 
     # Add argument names as a string except self
-    df['arg_names_str'] = df['arg_names'].apply(lambda l: " ".join([v for v in l if v != 'self']))
+    df["arg_names_str"] = df["arg_names"].apply(
+        lambda l: " ".join([v for v in l if v != "self"])
+    )
 
     # Add return expressions as a string, replace self. and self within expressions
-    df['return_expr_str'] = df['return_expr'].apply(lambda l: " ".join([re.sub(r"self\.?", '', v) for v in l]))
+    df["return_expr_str"] = df["return_expr"].apply(
+        lambda l: " ".join([re.sub(r"self\.?", "", v) for v in l])
+    )
 
     # Drop all columns useless for the ML algorithms
-    df = df.drop(columns=['file', 'author', 'repo', 'has_type', 'arg_names', 'arg_types', 'arg_descrs', 'return_expr'])
+    df = df.drop(
+        columns=[
+            "file",
+            "author",
+            "repo",
+            "has_type",
+            "arg_names",
+            "arg_types",
+            "arg_descrs",
+            "return_expr",
+        ]
+    )
 
     # Store the dataframes
     df.to_csv(config.ML_RETURN_DF_PATH, index=False)
