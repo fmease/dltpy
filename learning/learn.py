@@ -318,7 +318,7 @@ def load_m2():
     ).to(device)
     return model, model_config
 
-
+# "Model C" (the best performing one according to the paper)
 def load_m3():
     model_config = {
         "sequence_length": 55,
