@@ -2,6 +2,7 @@ import os
 import pickle
 import time
 import json
+from io import BytesIO
 
 import numpy as np
 import torch
@@ -17,7 +18,14 @@ import config
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
+# used for "pickle.load" because of the __reduce__ method on torch.storage._StorageBase eww!
+def patched_load_from_bytes(b):
+    return torch.load(BytesIO(b), map_location=device)
+torch.storage._load_from_bytes = patched_load_from_bytes
+
+# torch.backends.cudnn.enabled = False
 
 def count_model_parameters(model: nn.Module) -> int:
     """
@@ -167,9 +175,9 @@ def load_dataset(X, y, batch_size: int, split=0.8) -> Tuple:
         train_data, [train_size, test_size]
     )
 
-    train_loader = torch.utils.data.DataLoader(
+    train_loader: DataLoader | NoneType = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True
-    )
+    ) if split > 0 else None
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
 
     return train_loader, test_loader
@@ -226,97 +234,55 @@ def top_n_fix(y_true, y_pred, n):
     return best_predicted
 
 
-def train_loop(
-    model: nn.Module,
-    data_loader: DataLoader,
-    model_config: dict,
-    model_store_dir,
-    save_each_x_epochs=25,
-):
-    model.train()
+# def train_loop(
+#     model: nn.Module,
+#     data_loader: DataLoader,
+#     model_config: dict,
+#     model_store_dir,
+#     save_each_x_epochs=25,
+# ):
+#     model.train()
 
-    # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=model_config["learning_rate"])
-    losses = []
+#     # Loss and optimizer
+#     criterion = nn.CrossEntropyLoss()
+#     optimizer = torch.optim.Adam(model.parameters(), lr=model_config["learning_rate"])
+#     losses = []
 
-    # Train the model
-    total_step = len(data_loader)
-    losses = np.empty(total_step * model_config["num_epochs"])
-    i = 0
-    for epoch in range(1, model_config["num_epochs"] + 1):
-        for batch_i, (batch, labels) in enumerate(data_loader):
-            batch = batch.to(device)
-            labels = labels.to(device)
-            # Forward pass
-            optimizer.zero_grad()
-            outputs = model(batch)
-            loss = criterion(outputs, labels)
+#     # Train the model
+#     total_step = len(data_loader)
+#     losses = np.empty(total_step * model_config["num_epochs"])
+#     i = 0
+#     for epoch in range(1, model_config["num_epochs"] + 1):
+#         for batch_i, (batch, labels) in enumerate(data_loader):
+#             batch = batch.to(device)
+#             labels = labels.to(device)
+#             # Forward pass
+#             optimizer.zero_grad()
+#             outputs = model(batch)
+#             loss = criterion(outputs, labels)
 
-            # Backward and optimize
-            loss.backward()
-            optimizer.step()
-            losses[i] = loss.item()
-            i += 1
+#             # Backward and optimize
+#             loss.backward()
+#             optimizer.step()
+#             losses[i] = loss.item()
+#             i += 1
 
-        print(
-            f'Epoch [{epoch}/{model_config["num_epochs"]}], Batch: [{batch_i}/{total_step}], '
-            f"Loss:{loss.item():.10f}"
-        )
-        if device == "cuda":
-            print(f"Cuda v-memory allocated {torch.cuda.memory_allocated()}")
+#         print(
+#             f'Epoch [{epoch}/{model_config["num_epochs"]}], Batch: [{batch_i}/{total_step}], '
+#             f"Loss:{loss.item():.10f}"
+#         )
+#         if device == "cuda":
+#             print(f"Cuda v-memory allocated {torch.cuda.memory_allocated()}")
 
-        if epoch % save_each_x_epochs == 0 or (epoch == model_config["num_epochs"]):
-            print("Storing model!")
-            store_model(
-                model,
-                f"model_{model.__class__.__name__}_e_{epoch}_l_{loss.item():0.10f}.h5",
-                model_dir=os.path.join(config.MODEL_DIR, model_store_dir),
-            )
+#         if epoch % save_each_x_epochs == 0 or (epoch == model_config["num_epochs"]):
+#             print("Storing model!")
+#             store_model(
+#                 model,
+#                 f"model_{model.__class__.__name__}_e_{epoch}_l_{loss.item():0.10f}.h5",
+#                 model_dir=os.path.join(config.MODEL_DIR, model_store_dir),
+#             )
 
-    return losses
-
-
-def load_m1():
-    model_config = {
-        "sequence_length": 55,
-        "input_size": 14,  # The number of expected features in the input `x`
-        "hidden_size": 14,  # 128x2: 256
-        "num_layers": 2,
-        "batch_size": 256,
-        "num_epochs": 100,
-        "learning_rate": 0.002,
-        "bidirectional": True,
-    }
-    # Load the model
-    model = BiRNN(
-        model_config["input_size"],
-        model_config["hidden_size"],
-        model_config["num_layers"],
-        model_config["bidirectional"],
-    ).to(device)
-    return model, model_config
-
-
-def load_m2():
-    model_config = {
-        "sequence_length": 55,
-        "input_size": 14,  # The number of expected features in the input `x`
-        "hidden_size": 10,  # 128x2: 256
-        "num_layers": 1,
-        "batch_size": 256,
-        "num_epochs": 100,
-        "learning_rate": 0.002,
-        "bidirectional": False,
-    }
-    # Load the model
-    model = GRURNN(
-        model_config["input_size"],
-        model_config["hidden_size"],
-        model_config["num_layers"],
-        model_config["bidirectional"],
-    ).to(device)
-    return model, model_config
+#     return losses
 
 
 # "Model C" (the best performing one according to the paper)
@@ -328,27 +294,6 @@ def load_m3():
         "num_layers": 1,
         "batch_size": 256,
         "num_epochs": 25,
-        "learning_rate": 0.002,
-        "bidirectional": True,
-    }
-    # Load the model
-    model = BiRNN(
-        model_config["input_size"],
-        model_config["hidden_size"],
-        model_config["num_layers"],
-        model_config["bidirectional"],
-    ).to(device)
-    return model, model_config
-
-
-def load_m4():
-    model_config = {
-        "sequence_length": 55,
-        "input_size": 14,  # The number of expected features in the input `x`
-        "hidden_size": 20,  # 128x2: 256
-        "num_layers": 1,
-        "batch_size": 256,
-        "num_epochs": 100,
         "learning_rate": 0.002,
         "bidirectional": True,
     }
@@ -386,77 +331,61 @@ def report_loss(losses, filename: str):
     store_model(losses, f"{filename}.pkl", "./output/reports/pkl")
     store_json({"loss": list(losses)}, f"{filename}.json", "./output/reports/json")
 
-
 if __name__ == "__main__":
-    print(f"-- Using {device} for training.")
+    # print(f"-- Using {device} for training.")
 
-    top_n_pred = [1, 2, 3]
-    models = [load_m4]
-    datasets = ["output"]
-    n_repetitions = 3
+    DATASET = "output"
+    # Load data
+    (
+        RETURN_DATAPOINTS_X,
+        RETURN_DATAPOINTS_Y,
+        PARAM_DATAPOINTS_X,
+        PARAM_DATAPOINTS_Y,
+    ) = get_datapoints(DATASET)
+    print(f"-- Loading data: {DATASET}")
+    Xr, yr = load_data_tensors(RETURN_DATAPOINTS_X, RETURN_DATAPOINTS_Y, limit=-1)
+    Xp, yp = load_data_tensors(PARAM_DATAPOINTS_X, PARAM_DATAPOINTS_Y, limit=-1)
+    X = torch.cat((Xp, Xr))
+    y = torch.cat((yp, yr))
 
-    for dataset in datasets:
-        # Load data
-        (
-            RETURN_DATAPOINTS_X,
-            RETURN_DATAPOINTS_Y,
-            PARAM_DATAPOINTS_X,
-            PARAM_DATAPOINTS_Y,
-        ) = get_datapoints(dataset)
-        print(f"-- Loading data: {dataset}")
-        Xr, yr = load_data_tensors(RETURN_DATAPOINTS_X, RETURN_DATAPOINTS_Y, limit=-1)
-        Xp, yp = load_data_tensors(PARAM_DATAPOINTS_X, PARAM_DATAPOINTS_Y, limit=-1)
-        X = torch.cat((Xp, Xr))
-        y = torch.cat((yp, yr))
+    model, model_config = load_m3()
+    print(f"-- Model Loaded: {model} with {count_model_parameters(model)} parameters.")
 
-        for load_model in models:
-            for i in range(n_repetitions):
-                model, model_config = load_model()
+    # split=0 means the data set is 0% used for training and a 100% for testing/predicting
+    train_loader, test_loader = load_dataset(
+        X, y, model_config["batch_size"], split=0
+    )
 
-                print(
-                    f"-- Model Loaded: {model} with {count_model_parameters(model)} parameters."
-                )
+    TOP_N_PRED = 3
 
-                train_loader, test_loader = load_dataset(
-                    X, y, model_config["batch_size"], split=0.8
-                )
+    model = load_model("./model_BiRNN_e_25_l_1.1963005066.h5")
 
-                # Start training
-                losses = train_loop(
-                    model,
-                    train_loader,
-                    model_config,
-                    model_store_dir=f"{load_model.__name__}/{dataset}/{i}"
-                    + str(int(time.time())),
-                )
+    # Evaluate model performance
+    y_true, y_pred = evaluate(model, test_loader, top_n=TOP_N_PRED)
 
-                # print("-- Loading model")
-                # model = load_model('1571306801/model_BiRNN_e_9_l_1.8179169893.h5')
+    # # If the prediction is "other" - ignore the result
+    # label_encoder = pickle.load(
+    #     open(f"./{dataset}/ml_inputs/label_encoder.pkl", "rb")
+    # )
 
-                # Evaluate model performance
-                y_true, y_pred = evaluate(model, test_loader, top_n=max(top_n_pred))
+    print("end")
 
-                # If the prediction is "other" - ignore the result
-                label_encoder = pickle.load(
-                    open(f"./{dataset}/ml_inputs/label_encoder.pkl", "rb")
-                )
+    # "other" is not part of training data
+    # idx_of_other = -1
+    # try:
+    #     idx_of_other = label_encoder.transform(["other"])[0]
+    # except ValueError:
+    #     print(
+    #         "note: pseudo type 'other' is not part of the training data",
+    #         file=stderr,
+    #     )
+    #     pass
 
-                # "other" is not part of training data
-                idx_of_other = -1
-                try:
-                    idx_of_other = label_encoder.transform(["other"])[0]
-                except ValueError:
-                    print(
-                        "note: pseudo type 'other' is not part of the training data",
-                        file=stderr,
-                    )
-                    pass
+    # idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
 
-                idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
+    # for top_n in top_n_pred:
+    #     filename = f"{load_model.__name__}_{dataset}_{i}_{top_n}"
+    #     report(y_true, y_pred, top_n, filename)
+    #     report(y_true[idx], y_pred[idx], top_n, f"{filename}_unfiltered")
 
-                for top_n in top_n_pred:
-                    filename = f"{load_model.__name__}_{dataset}_{i}_{top_n}"
-                    report(y_true, y_pred, top_n, filename)
-                    report(y_true[idx], y_pred[idx], top_n, f"{filename}_unfiltered")
-
-                report_loss(losses, f"{load_model.__name__}_{dataset}_{i}_loss")
+    # report_loss(losses, f"{load_model.__name__}_{dataset}_{i}_loss")
