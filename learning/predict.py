@@ -72,6 +72,11 @@ def load_model(filename: str, model_dir=config.MODEL_DIR) -> nn.Module:
     with open(os.path.join(model_dir, filename), "rb") as f:
         return pickle.load(f)
 
+# @Task Get rid of this global variable which is used in a hack to circumvent a bug in
+# a dependency. Replace it with a class attribute on BiRNN. That does not work right now
+# since for some reason the class instance gets modified between `__init__` and `forward`
+# which renders that approach unusable
+bi_rnn_lstm_flat_weights = None
 
 class BiRNN(nn.Module):
     """
@@ -97,13 +102,16 @@ class BiRNN(nn.Module):
             bidirectional=bidirectional,
         )
 
+        global bi_rnn_lstm_flat_weights
+        bi_rnn_lstm_flat_weights = self.lstm._flat_weights
+
         self.linear = nn.Linear(hidden_size * (2 if bidirectional else 1), 1000)
 
     def forward(self, x):
         x = self.dropout(x)
 
-        # Forward propagate LSTM
-        # Out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        global bi_rnn_lstm_flat_weights
+        self.lstm._flat_weights = bi_rnn_lstm_flat_weights
         x, _ = self.lstm(x)
 
         # Decode the hidden state of the last time step
@@ -334,15 +342,15 @@ def report_loss(losses, filename: str):
 if __name__ == "__main__":
     # print(f"-- Using {device} for training.")
 
-    DATASET = "output"
+    dataset = OUTPUT_DIRECTORY_TOPLEVEL
     # Load data
     (
         RETURN_DATAPOINTS_X,
         RETURN_DATAPOINTS_Y,
         PARAM_DATAPOINTS_X,
         PARAM_DATAPOINTS_Y,
-    ) = get_datapoints(DATASET)
-    print(f"-- Loading data: {DATASET}")
+    ) = get_datapoints(dataset)
+    print(f"-- Loading data: {dataset}")
     Xr, yr = load_data_tensors(RETURN_DATAPOINTS_X, RETURN_DATAPOINTS_Y, limit=-1)
     Xp, yp = load_data_tensors(PARAM_DATAPOINTS_X, PARAM_DATAPOINTS_Y, limit=-1)
     X = torch.cat((Xp, Xr))
@@ -350,6 +358,7 @@ if __name__ == "__main__":
 
     model, model_config = load_m3()
     print(f"-- Model Loaded: {model} with {count_model_parameters(model)} parameters.")
+    print("model config:", model_config)
 
     # split=0 means the data set is 0% used for training and a 100% for testing/predicting
     train_loader, test_loader = load_dataset(
@@ -358,30 +367,50 @@ if __name__ == "__main__":
 
     TOP_N_PRED = 3
 
+    # @Question is it weird to overwrite the model???
+    # I mean, we can only get `test_loader` which is needed for
+    # `evaluate` by constructing a temporary model with `load_m3`
     model = load_model("./model_BiRNN_e_25_l_1.1963005066.h5")
 
+    # print("loaded module info:")
+    # print("  hidden_size:", model.hidden_size)
+    # print("  num_layers:", model.num_layers)
+    # print("  dropout:", model.dropout)
+    # print("  lstm:", model.lstm)
+    # print("  parameters:", count_model_parameters(model))
+
     # Evaluate model performance
+    # @Question is `y_pred` what we need to get the actual inferred types out of it?
+    # @Question if so, how?
     y_true, y_pred = evaluate(model, test_loader, top_n=TOP_N_PRED)
 
-    # # If the prediction is "other" - ignore the result
-    # label_encoder = pickle.load(
-    #     open(f"./{dataset}/ml_inputs/label_encoder.pkl", "rb")
-    # )
+    # print("y_true:", y_true)
+    # print("len(y_true):", len(y_true))
+    # print("y_pred:", y_pred)
+    # print("len(y_pred):", len(y_pred))
 
-    print("end")
+
+    # If the prediction is "other" - ignore the result
+    label_encoder = pickle.load(
+        open(os.path.join(ML_INPUTS_PATH, "label_encoder.pkl"), "rb")
+    )
 
     # "other" is not part of training data
-    # idx_of_other = -1
-    # try:
-    #     idx_of_other = label_encoder.transform(["other"])[0]
-    # except ValueError:
-    #     print(
-    #         "note: pseudo type 'other' is not part of the training data",
-    #         file=stderr,
-    #     )
-    #     pass
+    idx_of_other = -1
+    try:
+        idx_of_other = label_encoder.transform(["other"])[0]
+    except ValueError:
+        print(
+            "note: pseudo type 'other' is not part of the training data",
+            file=stderr,
+        )
+        pass
 
-    # idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
+    idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
+
+    # y_pred_fixed = top_n_fix(y_true, y_pred, TOP_N_PRED) # not sure if necessary
+
+    # print("idx:", idx, "len:", len(idx), "all True:", all(idx))
 
     # for top_n in top_n_pred:
     #     filename = f"{load_model.__name__}_{dataset}_{i}_{top_n}"

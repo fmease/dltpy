@@ -391,7 +391,7 @@ if __name__ == "__main__":
     print(f"-- Using {device} for training.")
 
     top_n_pred = [1, 2, 3]
-    models = [load_m4]
+    models = [load_m3]
     datasets = ["output"]
     n_repetitions = 3
 
