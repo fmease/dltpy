@@ -111,3 +111,5 @@ pyvenv.cfg
 /output
 
 _temp.csv
+
+.vscode/

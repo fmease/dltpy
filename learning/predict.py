@@ -102,16 +102,17 @@ class BiRNN(nn.Module):
             bidirectional=bidirectional,
         )
 
+        self.linear = nn.Linear(hidden_size * (2 if bidirectional else 1), 1000)
+
         global bi_rnn_lstm_flat_weights
         bi_rnn_lstm_flat_weights = self.lstm._flat_weights
 
-        self.linear = nn.Linear(hidden_size * (2 if bidirectional else 1), 1000)
-
     def forward(self, x):
-        x = self.dropout(x)
-
         global bi_rnn_lstm_flat_weights
         self.lstm._flat_weights = bi_rnn_lstm_flat_weights
+
+        x = self.dropout(x)
+
         x, _ = self.lstm(x)
 
         # Decode the hidden state of the last time step

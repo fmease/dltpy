@@ -14,18 +14,19 @@ from preprocessing.nl_preprocessing import NLPreprocessor
 from preprocessing.project_filter import ProjectFilter
 from preprocessing.utils import ParallelExecutor
 
+import config
+
 cloner = Cloner()
 project_filter = ProjectFilter()
 extractor = Extractor()
 preprocessor = NLPreprocessor()
 
 # Create output directory
-if not os.path.isdir("./output"):
-    os.mkdir("./output")
+if not os.path.isdir(OUTPUT_DIRECTORY_TOPLEVEL):
+    os.mkdir(OUTPUT_DIRECTORY_TOPLEVEL)
 
 
 # LOCAL CONFIG
-OUTPUT_DIRECTORY = os.path.join("./output/data")
 USE_CACHE = False
 
 
@@ -57,7 +58,7 @@ def get_project_filename(project) -> str:
     :return: return filename
     """
     return os.path.join(
-        OUTPUT_DIRECTORY, f"{project['author']}{project['repo']}-functions.csv"
+        DATA_FILES_DIR, f"{project['author']}{project['repo']}-functions.csv"
     )
 
 
@@ -160,21 +161,80 @@ def process_project(i, project):
     finally:
         write_project(project)
 
+def process_single_project(project_directory: str) -> None:
+    """
+    Run the pipeline (filter, extract, remove) for the given project
+    """
+
+
+    # to stay compatible with `write_project` for now
+    project = {
+        "author": "sham",
+        "files": [],
+        "repo": os.path.basename(project_directory),
+    }
+
+    try:
+        if os.path.exists(get_project_filename(project)) and USE_CACHE:
+            print(f"Found cached copy")
+            return
+
+        filtered_project_directory = project_filter.filter_directory(project_directory)
+
+        extracted_functions = {}
+        for filename in list_files(filtered_project_directory):
+            try:
+                functions = extractor.extract(read_file(filename))
+                extracted_functions[filename] = functions
+            except ParseError:
+                print(f"Could not parse file {filename}")
+            except UnicodeDecodeError:
+                print(f"Could not read file {filename}")
+
+        preprocessed_functions = {}
+        for filename, functions in extracted_functions.items():
+            preprocessed_functions[filename] = [
+                preprocessor.preprocess(function) for function in functions
+            ]
+
+        project["files"] = [
+            {"filename": filename, "functions": functions}
+            for filename, functions in preprocessed_functions.items()
+        ]
+
+        if "repoUrl" in project:
+            print(f"Remove project files for {project_id}...")
+            shutil.rmtree(raw_project_directory)
+    except KeyboardInterrupt:
+        quit(1)
+    except Exception:
+        print(f"Processing failed")
+        traceback.print_exc()
+    finally:
+        write_project(project)
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--projects-file",
-    help="json file containing GitHub projects",
+    "--project-dir",
+    help="project directory to preprocess",
     type=str,
-    default="./resources/mypy-dependents-by-stars.json",
 )
-parser.add_argument(
-    "--limit",
-    help="limit the number of projects for which the pipeline should run",
-    type=int,
-    default=0,
-)
+# parser.add_argument(
+#     "--projects-file",
+#     help="json file containing GitHub projects",
+#     type=str,
+#     default="./resources/mypy-dependents-by-stars.json",
+# )
+# parser.add_argument(
+#     "--limit",
+#     help="limit the number of projects for which the pipeline should run",
+#     type=int,
+#     default=0,
+# )
+# parser.add_argument(
+#     "--start", help="start position within projects list", type=int, default=0
+# )
 parser.add_argument(
     "--jobs", help="number of jobs to use for pipeline.", type=int, default=-1
 )
@@ -182,26 +242,24 @@ parser.add_argument(
     "--output-dir",
     help="output dir for the pipeline",
     type=str,
-    default=OUTPUT_DIRECTORY,
-)
-parser.add_argument(
-    "--start", help="start position within projects list", type=int, default=0
+    default=DATA_FILES_DIR,
 )
 
 if __name__ == "__main__":
     # Parse args
     args = parser.parse_args()
 
-    # Create output dir
-    OUTPUT_DIRECTORY = args.output_dir
-    if not os.path.exists(OUTPUT_DIRECTORY):
-        os.mkdir(OUTPUT_DIRECTORY)
+    DATA_FILES_DIR = args.output_dir
+    if not os.path.exists(DATA_FILES_DIR):
+        os.mkdir(DATA_FILES_DIR)
 
     # Open projects file and run pipeline
-    with open(args.projects_file) as json_file:
-        projects = json.load(json_file)
+    # with open(args.projects_file) as json_file:
+    #     projects = json.load(json_file)
 
-        if args.limit > 0:
-            projects = projects[: args.limit]
+    #     if args.limit > 0:
+    #         projects = projects[: args.limit]
 
-        run_pipeline(projects)
+    #     run_pipeline(projects)
+
+    process_single_project(args.project_dir)
