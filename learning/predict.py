@@ -69,7 +69,8 @@ def load_model(filename: str, model_dir=config.MODEL_DIR) -> nn.Module:
     :param model_dir: directory in which the file is located
     :return:
     """
-    with open(os.path.join(model_dir, filename), "rb") as f:
+    # with open(os.path.join(model_dir, filename), "rb") as f:
+    with open(os.path.join(config.PROJECT_ROOT, filename), "rb") as f:
         return pickle.load(f)
 
 # @Task Get rid of this global variable which is used in a hack to circumvent a bug in
@@ -316,44 +317,25 @@ def load_m3():
     return model, model_config
 
 
-def get_datapoints(dataset: str) -> Tuple[str, str, str, str]:
-    base = f"./{dataset}/vectors/"
-    return (
-        base + "return_datapoints_x.npy",
-        base + "return_datapoints_y.npy",
-        base + "param_datapoints_x.npy",
-        base + "param_datapoints_y.npy",
-    )
-
-
 def report(y_true, y_pred, top_n, filename: str):
     # Fix the predictions if the true value is in top-n predictions
     y_pred_fixed = top_n_fix(y_true, y_pred, top_n)
 
     # Computation of metrics
     report = classification_report(y_true, y_pred_fixed, output_dict=True)
-    store_model(report, f"{filename}.pkl", "./output/reports/pkl")
-    store_json(report, f"{filename}.json", "./output/reports/json")
+    store_model(report, f"{filename}.pkl", os.path.join(config.REPORTS_PATH, "pkl"))
+    store_json(report, f"{filename}.json", os.path.join(config.REPORTS_PATH, "json"))
 
 
 def report_loss(losses, filename: str):
-    store_model(losses, f"{filename}.pkl", "./output/reports/pkl")
-    store_json({"loss": list(losses)}, f"{filename}.json", "./output/reports/json")
+    store_model(losses, f"{filename}.pkl", os.path.join(config.REPORTS_PATH, "pkl"))
+    store_json({"loss": list(losses)}, f"{filename}.json", os.path.join(config.REPORTS_PATH, "json"))
 
 if __name__ == "__main__":
-    # print(f"-- Using {device} for training.")
-
-    dataset = OUTPUT_DIRECTORY_TOPLEVEL
-    # Load data
-    (
-        RETURN_DATAPOINTS_X,
-        RETURN_DATAPOINTS_Y,
-        PARAM_DATAPOINTS_X,
-        PARAM_DATAPOINTS_Y,
-    ) = get_datapoints(dataset)
+    dataset = config.OUTPUT_DIRECTORY_TOPLEVEL
     print(f"-- Loading data: {dataset}")
-    Xr, yr = load_data_tensors(RETURN_DATAPOINTS_X, RETURN_DATAPOINTS_Y, limit=-1)
-    Xp, yp = load_data_tensors(PARAM_DATAPOINTS_X, PARAM_DATAPOINTS_Y, limit=-1)
+    Xr, yr = load_data_tensors(config.RETURN_DATAPOINTS_X, config.RETURN_DATAPOINTS_Y, limit=-1)
+    Xp, yp = load_data_tensors(config.PARAM_DATAPOINTS_X, config.PARAM_DATAPOINTS_Y, limit=-1)
     X = torch.cat((Xp, Xr))
     y = torch.cat((yp, yr))
 
@@ -371,7 +353,7 @@ if __name__ == "__main__":
     # @Question is it weird to overwrite the model???
     # I mean, we can only get `test_loader` which is needed for
     # `evaluate` by constructing a temporary model with `load_m3`
-    model = load_model("./model_BiRNN_e_25_l_1.1963005066.h5")
+    model = load_model("model_BiRNN_e_25_l_1.1963005066.h5")
 
     # print("loaded module info:")
     # print("  hidden_size:", model.hidden_size)
@@ -388,13 +370,38 @@ if __name__ == "__main__":
     # print("y_true:", y_true)
     # print("len(y_true):", len(y_true))
     # print("y_pred:", y_pred)
+    # print("y_pred[:,0]:", y_pred[:,0])
+    # print("y_pred[:,1]:", y_pred[:,1])
+    # print("y_pred[:,2]:", y_pred[:,2])
     # print("len(y_pred):", len(y_pred))
 
 
     # If the prediction is "other" - ignore the result
+    # label_encoder = pickle.load(
+    #     open(os.path.join(config.ML_INPUTS_PATH, "label_encoder.pkl"), "rb")
+    # )
     label_encoder = pickle.load(
-        open(os.path.join(ML_INPUTS_PATH, "label_encoder.pkl"), "rb")
+        open(os.path.join(config.PROJECT_ROOT, "label_encoder_cb.pkl"), "rb")
     )
+
+    # print(len(label_encoder.classes_))
+
+    # print("label_encoder:", label_encoder.__class__)
+
+    def maybe_inverse_transform_single(x):
+        try:
+            return label_encoder.inverse_transform([x])[0]
+        except ValueError:
+            return None
+
+    print("--- y_true: ---")
+    print(list(map(maybe_inverse_transform_single, y_true)))
+    print("--- y_pred 0: ---")
+    print(list(label_encoder.inverse_transform(y_pred[:,0])))
+    print("--- y_pred 1: ---")
+    print(list(label_encoder.inverse_transform(y_pred[:,1])))
+    print("--- y_pred 2: ---")
+    print(list(label_encoder.inverse_transform(y_pred[:,2])))
 
     # "other" is not part of training data
     idx_of_other = -1
@@ -409,13 +416,15 @@ if __name__ == "__main__":
 
     idx = (y_true != idx_of_other) & (y_pred[:, 0] != idx_of_other)
 
-    # y_pred_fixed = top_n_fix(y_true, y_pred, TOP_N_PRED) # not sure if necessary
+    y_pred_fixed = top_n_fix(y_true, y_pred, TOP_N_PRED) # not sure if necessary
+
+    # print("y_pred_fixed:",y_pred_fixed)
+    print("--- y_pred_fixed: ---")
+    print(list(label_encoder.inverse_transform(y_pred_fixed)))
+
 
     # print("idx:", idx, "len:", len(idx), "all True:", all(idx))
 
-    # for top_n in top_n_pred:
-    #     filename = f"{load_model.__name__}_{dataset}_{i}_{top_n}"
-    #     report(y_true, y_pred, top_n, filename)
-    #     report(y_true[idx], y_pred[idx], top_n, f"{filename}_unfiltered")
-
-    # report_loss(losses, f"{load_model.__name__}_{dataset}_{i}_loss")
+    # filename = f"{load_model.__name__}_{TOP_N_PRED}"
+    # report(y_true, y_pred, TOP_N_PRED, filename)
+    # report(y_true[idx], y_pred[idx], TOP_N_PRED, f"{filename}_unfiltered")

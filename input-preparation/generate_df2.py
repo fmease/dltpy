@@ -1,5 +1,6 @@
 import os
 import re
+from sys import stderr
 from typing import Tuple
 
 import pandas as pd
@@ -92,14 +93,14 @@ def format_df(df: pd.DataFrame) -> pd.DataFrame:
 # but for prediciting we don't want to filter any or at least that many functions,
 # am I correct? (depends on the concrete filtering) 
 def filter_return_datapoints(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Filters functions which are note useful.
-    :param df: dataframe to use
-    :return: filtered dataframe
-    """
-    print(f"Functions before dropping on return type {len(df)}")
-    df = df.dropna(subset=["return_type"])
-    print(f"Functions after dropping on return type {len(df)}")
+    # """
+    # Filters functions which are note useful.
+    # :param df: dataframe to use
+    # :return: filtered dataframe
+    # """
+    # print(f"Functions before dropping on return type {len(df)}")
+    # df = df.dropna(subset=["return_type"])
+    # print(f"Functions after dropping on return type {len(df)}")
 
     print(f"Functions before dropping nan, None, Any return type {len(df)}")
     to_drop = np.invert(
@@ -110,17 +111,17 @@ def filter_return_datapoints(df: pd.DataFrame) -> pd.DataFrame:
     df = df[to_drop]
     print(f"Functions after dropping nan return type {len(df)}")
 
-    print(
-        f"Functions before dropping on empty docstring, function comment and return comment {len(df)}"
-    )
-    df = df.dropna(subset=["docstring", "func_descr", "return_descr"])
-    print(
-        f"Functions after dropping on empty docstring, function comment and return comment {len(df)}"
-    )
+    # print(
+    #     f"Functions before dropping on empty docstring, function comment and return comment {len(df)}"
+    # )
+    # df = df.dropna(subset=["docstring", "func_descr", "return_descr"])
+    # print(
+    #     f"Functions after dropping on empty docstring, function comment and return comment {len(df)}"
+    # )
 
-    print(f"Functions before dropping on empty return expression {len(df)}")
-    df = df[df["return_expr"].apply(lambda x: len(literal_eval(x))) > 0]
-    print(f"Functions after dropping on empty return expression {len(df)}")
+    # print(f"Functions before dropping on empty return expression {len(df)}")
+    # df = df[df["return_expr"].apply(lambda x: len(literal_eval(x))) > 0]
+    # print(f"Functions after dropping on empty return expression {len(df)}")
 
     return df
 
@@ -159,9 +160,11 @@ def encode_types(
     :param df: dataframe with function data
     :param df_args: dataframe with argument data
     :param threshold: number of common types to keep
-    :return: dataframe with types encoded and the labels encoder used for it.
+    :return: dataframe with types encoded.
     """
-    le = LabelEncoder()
+    label_encoder = pickle.load(
+        open(os.path.join(config.PROJECT_ROOT, "label_encoder_cb.pkl"), "rb")
+    )
 
     # All types
     return_types = df["return_type"].values
@@ -190,22 +193,40 @@ def encode_types(
     return_types = df["return_type_t"].values
     arg_types = df_args["arg_type_t"].values
     all_types = np.concatenate((return_types, arg_types), axis=0)
-    le.fit(all_types)
+
+    other_index = label_encoder.transform(["other"])[0]
+
+    def transform(labels: list) -> list:
+        transformed_labels = []
+        correct_transformations = 0
+
+        for label in labels:
+            try:
+                transformed_labels.append(label_encoder.transform([label])[0])
+                correct_transformations += 1
+            except ValueError:
+                print(f"could not transform `{label}` with the pre-existing label_encoder; defaulting to `other`", file=stderr)
+
+                transformed_labels.append(other_index)
+
+        print(f"could transform {correct_transformations}/{len(transformed_labels)} labels", file=stderr)
+
+        return transformed_labels 
 
     print("Store type mapping with counts")
     pd.DataFrame(
-        list(zip(le.transform(common_types), common_types, common_types_counts)),
+        list(zip(transform(common_types), common_types, common_types_counts)),
         columns=["enc", "type", "count"],
     ).to_csv(TYPES_FILE)
 
     # transform all type
     print("Transforming return types")
-    df["return_type_enc"] = le.transform(return_types)
+    df["return_type_enc"] = transform(return_types)
 
     print("Transforming args types")
-    df_args["arg_type_enc"] = le.transform(arg_types)
+    df_args["arg_type_enc"] = transform(arg_types)
 
-    return df, df_args, le
+    return df, df_args
 
 
 if __name__ == "__main__":
@@ -238,11 +259,7 @@ if __name__ == "__main__":
 
     # Encode types as int
     print("Encoding types")
-    df, df_params, label_encoder = encode_types(df, df_params)
-
-    print("Storing label encoder")
-    with open(config.LABEL_ENCODER_PATH, "wb") as file:
-        pickle.dump(label_encoder, file)
+    df, df_params = encode_types(df, df_params)
 
     # Add argument names as a string except self
     df["arg_names_str"] = df["arg_names"].apply(

@@ -5,7 +5,6 @@ import os
 from time import time
 import config
 
-
 class HelperIterator:
     """
     Subclass for type Hinting the iterators listed below
@@ -30,6 +29,8 @@ class LanguageIterator(HelperIterator):
 
         for return_descr_sentence in self.return_df['return_descr']:
             yield return_descr_sentence.split()
+        
+        print("LanguageIterator.n:", n)
 
 
 class CodeIterator(HelperIterator):
@@ -49,6 +50,8 @@ class CodeIterator(HelperIterator):
 
         for arg_names_sentences in self.return_df['arg_names_str']:
             yield arg_names_sentences.split()
+        
+        print("CodeIterator.n:", n)
 
 
 class Embedder:
@@ -82,6 +85,9 @@ class Embedder:
 
         t = time()
 
+        # @Beacon @Beacon @Bug panics if we only have one project output by preprocessing.pipeline
+        # only if we add a second project or preprocess the previous a second time under a different
+        # name, only then this works...
         w2v_model.train(sentences=corpus_iterator,
                         total_examples=w2v_model.corpus_count,
                         epochs=20,

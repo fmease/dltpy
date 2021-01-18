@@ -239,5 +239,6 @@ if __name__ == '__main__':
                                     row.return_descr, row.return_expr_str, row.arg_names_str, row.return_type_enc),
     )
 
+    # if len(param_datapoints_result_x.shape) > 1 and len(return_datapoints_result_x.shape) > 1:
     assert param_datapoints_result_x.shape[1] == return_datapoints_result_x.shape[1], \
         "Param datapoints and return datapoints must have the same length, thus padding must be added."

@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 import traceback
+from sys import stderr
 
 import pandas as pd
 from joblib import delayed
@@ -14,6 +15,8 @@ from preprocessing.nl_preprocessing import NLPreprocessor
 from preprocessing.project_filter import ProjectFilter
 from preprocessing.utils import ParallelExecutor
 
+# @Beacon @Task make nltk_data put its data inside this project folder not in my HOME directory!!!
+
 import config
 
 cloner = Cloner()
@@ -22,8 +25,8 @@ extractor = Extractor()
 preprocessor = NLPreprocessor()
 
 # Create output directory
-if not os.path.isdir(OUTPUT_DIRECTORY_TOPLEVEL):
-    os.mkdir(OUTPUT_DIRECTORY_TOPLEVEL)
+if not os.path.isdir(config.OUTPUT_DIRECTORY_TOPLEVEL):
+    os.mkdir(config.OUTPUT_DIRECTORY_TOPLEVEL)
 
 
 # LOCAL CONFIG
@@ -58,7 +61,7 @@ def get_project_filename(project) -> str:
     :return: return filename
     """
     return os.path.join(
-        DATA_FILES_DIR, f"{project['author']}{project['repo']}-functions.csv"
+        config.DATA_FILES_DIR, f"{project['author']}{project['repo']}-functions.csv"
     )
 
 
@@ -93,7 +96,9 @@ def write_project(project) -> None:
     function_df["arg_names_len"] = function_df["arg_names"].apply(len)
     function_df["arg_types_len"] = function_df["arg_types"].apply(len)
     function_df.to_csv(get_project_filename(project))
-
+    # # hot fix for embedder not working with only a "single" file
+    # with open(os.path.join(config.DATA_FILES_DIR, f"empty-functions.csv"), "w") as f:
+    #     f.write(",author,repo,file,has_type,name,docstring,func_descr,arg_names,arg_types,arg_descrs,return_type,return_expr,return_descr,arg_names_len,arg_types_len")
 
 def run_pipeline(projects: list) -> None:
     """
@@ -175,7 +180,7 @@ def process_single_project(project_directory: str) -> None:
     }
 
     try:
-        if os.path.exists(get_project_filename(project)) and USE_CACHE:
+        if USE_CACHE and os.path.exists(get_project_filename(project)):
             print(f"Found cached copy")
             return
 
@@ -202,9 +207,9 @@ def process_single_project(project_directory: str) -> None:
             for filename, functions in preprocessed_functions.items()
         ]
 
-        if "repoUrl" in project:
-            print(f"Remove project files for {project_id}...")
-            shutil.rmtree(raw_project_directory)
+        # if "repoUrl" in project:
+        #     print(f"Remove project files for {project_id}...")
+        #     shutil.rmtree(raw_project_directory)
     except KeyboardInterrupt:
         quit(1)
     except Exception:
@@ -238,20 +243,20 @@ parser.add_argument(
 parser.add_argument(
     "--jobs", help="number of jobs to use for pipeline.", type=int, default=-1
 )
-parser.add_argument(
-    "--output-dir",
-    help="output dir for the pipeline",
-    type=str,
-    default=DATA_FILES_DIR,
-)
+# parser.add_argument(
+#     "--output-dir",
+#     help="output dir for the pipeline",
+#     type=str,
+#     default=config.DATA_FILES_DIR,
+# )
 
 if __name__ == "__main__":
     # Parse args
     args = parser.parse_args()
 
-    DATA_FILES_DIR = args.output_dir
-    if not os.path.exists(DATA_FILES_DIR):
-        os.mkdir(DATA_FILES_DIR)
+    # DATA_FILES_DIR = args.output_dir
+    if not os.path.exists(config.DATA_FILES_DIR):
+        os.mkdir(config.DATA_FILES_DIR)
 
     # Open projects file and run pipeline
     # with open(args.projects_file) as json_file:
