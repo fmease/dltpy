@@ -171,7 +171,20 @@ def encode_types(
     arg_types = df_args["arg_type"].values
     all_types = np.concatenate((return_types, arg_types), axis=0)
 
-    unique, counts = np.unique(all_types, return_counts=True)
+    import math
+    def replace_nans_with_other(num):
+        if type(num) is float and math.isnan(num):
+            return "other"
+        else:
+            return num
+    # for some reason, the array all_types may contain `math.nan`s
+    # apart from the usual strings representing types.
+    # we need to replace them with some string (here "other")
+    # otherwise, we'd get a type error down the line, namely inside
+    # `np.unique`
+    all_types = list(map(replace_nans_with_other, all_types))
+
+    unique, counts = np.unique(all_types, return_counts=True) # @Beacon @Bug crash
     print(f"Found {len(unique)} unique types in a total of {len(all_types)} types.")
 
     # keep the threshold most common types rest is mapped to 'other'
@@ -205,7 +218,7 @@ def encode_types(
                 transformed_labels.append(label_encoder.transform([label])[0])
                 correct_transformations += 1
             except ValueError:
-                print(f"could not transform `{label}` with the pre-existing label_encoder; defaulting to `other`", file=stderr)
+                # print(f"could not transform `{label}` with the pre-existing label_encoder; defaulting to `other`", file=stderr)
 
                 transformed_labels.append(other_index)
 

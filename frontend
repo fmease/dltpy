@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+python -m preprocessing.pipeline --project-dir "$1" &&
+python -m input-preparation.generate_df2 &&
+python -m input-preparation.df_to_vec

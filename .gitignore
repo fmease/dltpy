@@ -107,7 +107,7 @@ pyvenv.cfg
 .mypy_cache/
 
 # project specific
-/projects
+#/projects
 /output
 
 _temp.csv

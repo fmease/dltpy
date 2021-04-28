@@ -168,6 +168,8 @@ def encode_types(
     arg_types = df_args["arg_type"].values
     all_types = np.concatenate((return_types, arg_types), axis=0)
 
+    print("### v1 all_types =", all_types, len(all_types), "elements")
+
     unique, counts = np.unique(all_types, return_counts=True)
     print(f"Found {len(unique)} unique types in a total of {len(all_types)} types.")
 

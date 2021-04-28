@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+./frontend_legacy "$1"
+python -m learning.predict
+

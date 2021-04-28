@@ -17,8 +17,8 @@ import config
 
 
 # Device configuration
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 # used for "pickle.load" because of the __reduce__ method on torch.storage._StorageBase eww!
 def patched_load_from_bytes(b):
@@ -201,7 +201,13 @@ def load_data_tensors(filename_X: str, filename_y: str, limit: int) -> Tuple:
     :param limit: max amount of y data to load in
     :return: Tuple (X,y) consisting out of the tensor dataset
     """
-    X = torch.from_numpy(np.load(filename_X)[0:limit]).float()
+    a0 = np.load(filename_X)
+    a1 = a0[0:limit]
+    print("a1 = ", a1)
+    a2 = torch.from_numpy(a1)
+
+    # X = torch.from_numpy(np.load(filename_X)[0:limit]).float()
+    X = a2.float()
     y = torch.from_numpy(np.argmax(np.load(filename_y), axis=1)[0:limit]).long()
     return X, y
 
